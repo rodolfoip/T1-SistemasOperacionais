@@ -65,8 +65,7 @@ int main(void)
 
   do
   {
-    move_tokens(); /* move os tokens aleatoriamente */
-    check_move();
+    move_tokens();   /* move os tokens aleatoriamente */
     board_refresh(); /* redesenha tabuleiro */
 
     ch = getch();
