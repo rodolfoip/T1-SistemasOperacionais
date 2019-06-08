@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #define EMPTY ' '
 #define CURSOR_PAIR 1
@@ -17,6 +18,7 @@ void *move_token(void *token);
 void move_tokens();
 void board_refresh(void);
 void match_move();
+void run_game();
 pthread_t token[TOKENS];
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int id[TOKENS] = {0, 1, 2, 3, 4};
@@ -33,6 +35,12 @@ typedef struct CoordStruct
 coord_type cursor, coord_tokens[TOKENS];
 
 int main(void)
+{
+  run_game();
+  exit(0);
+}
+
+void run_game()
 {
   int ch;
   srand(time(NULL)); /* inicializa gerador de numeros aleatorios */
@@ -68,6 +76,7 @@ int main(void)
   do
   {
     board_refresh(); /* redesenha tabuleiro */
+    match_move();
 
     ch = getch();
     switch (ch)
@@ -105,10 +114,8 @@ int main(void)
       }
       break;
     }
-    match_move();
   } while ((ch != 'q') && (ch != 'Q') && (count_tokens != 0));
   endwin();
-  exit(0);
 }
 
 void match_move()
@@ -121,7 +128,6 @@ void match_move()
       pthread_mutex_lock(&mutex);
       board[coord_tokens[i].x][coord_tokens[i].y] = 0;
       count_tokens = count_tokens - 1;
-      board_refresh();
       pthread_mutex_unlock(&mutex);
     }
   }
@@ -150,6 +156,7 @@ void *move_token(void *token)
     } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
 
     /* retira token da posicao antiga  */
+    pthread_mutex_lock(&mutex);
 
     board[coord_tokens[i].x][coord_tokens[i].y] = 0;
     board[new_x][new_y] = *((int *)token);
@@ -157,6 +164,10 @@ void *move_token(void *token)
     /* coloca token na nova posicao */
     coord_tokens[i].x = new_x;
     coord_tokens[i].y = new_y;
+
+    pthread_mutex_unlock(&mutex);
+
+    sleep(1);/* Velocidade em que os tokens se movem */
   }
 }
 
