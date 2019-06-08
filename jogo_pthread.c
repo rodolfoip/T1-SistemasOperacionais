@@ -11,15 +11,16 @@
 #define COLS 11
 #define TOKENS 5
 
-pthread_t token[TOKENS];
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-int id[TOKENS] = {0, 1, 2, 3, 4};
 int is_move_okay(int y, int x);
-void check_move();
 void draw_board(void);
 void *move_token(void *token);
 void move_tokens();
 void board_refresh(void);
+void match_move();
+pthread_t token[TOKENS];
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int id[TOKENS] = {0, 1, 2, 3, 4};
+int count_tokens = TOKENS;
 
 char board[LINES][COLS];
 
@@ -61,11 +62,11 @@ int main(void)
   init_pair(EMPTY_PAIR, COLOR_BLUE, COLOR_BLUE);
   clear();
 
-  draw_board(); /* inicializa tabuleiro */
+  draw_board();  /* inicializa tabuleiro */
+  move_tokens(); /* move os tokens aleatoriamente */
 
   do
   {
-    move_tokens();   /* move os tokens aleatoriamente */
     board_refresh(); /* redesenha tabuleiro */
 
     ch = getch();
@@ -104,55 +105,59 @@ int main(void)
       }
       break;
     }
-  } while ((ch != 'q') && (ch != 'Q'));
+    match_move();
+  } while ((ch != 'q') && (ch != 'Q') && (count_tokens != 0));
   endwin();
   exit(0);
 }
 
-void move_tokens()
-{
-  int i;
-  for (i = 0; i < TOKENS; i++)
-  {
-    pthread_create(&token[i], NULL, move_token, (void *)&id[i]);
-  }
-}
-
-void *move_token(void *token)
-{
-  int i = *((int *)token), new_x, new_y;
-  /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
-
-  do
-  {
-    new_x = rand() % (COLS);
-    new_y = rand() % (LINES);
-  } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
-
-  /* retira token da posicao antiga  */
-
-  board[coord_tokens[i].x][coord_tokens[i].y] = 0;
-  board[new_x][new_y] = *((int *)token);
-
-  /* coloca token na nova posicao */
-  coord_tokens[i].x = new_x;
-  coord_tokens[i].y = new_y;
-}
-
-void check_move()
+void match_move()
 {
   int i;
   for (i = 0; i < TOKENS; i++)
   {
     if (coord_tokens[i].x == cursor.x && coord_tokens[i].y == cursor.y)
     {
+      pthread_mutex_lock(&mutex);
       board[coord_tokens[i].x][coord_tokens[i].y] = 0;
+      count_tokens = count_tokens - 1;
+      board_refresh();
+      pthread_mutex_unlock(&mutex);
     }
   }
 }
 
-int is_move_okay(int x, int y)
+void move_tokens()
 {
+  int i;
+  for (i = 0; i < TOKENS; i++)
+    pthread_create(&token[i], NULL, move_token, (void *)&id[i]);
+}
+
+void *move_token(void *token)
+{
+  while (1)
+  {
+    /* code */
+    int i = *((int *)token), new_x, new_y;
+
+    /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
+
+    do
+    {
+      new_x = rand() % (COLS);
+      new_y = rand() % (LINES);
+    } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
+
+    /* retira token da posicao antiga  */
+
+    board[coord_tokens[i].x][coord_tokens[i].y] = 0;
+    board[new_x][new_y] = *((int *)token);
+
+    /* coloca token na nova posicao */
+    coord_tokens[i].x = new_x;
+    coord_tokens[i].y = new_y;
+  }
 }
 
 void board_refresh(void)
@@ -171,7 +176,7 @@ void board_refresh(void)
 
   /* poe os tokens no tabuleiro */
 
-  for (i = 0; i < TOKENS; i++)
+  for (i = 0; i < count_tokens; i++)
   {
     attron(COLOR_PAIR(TOKEN_PAIR));
     mvaddch(coord_tokens[i].y, coord_tokens[i].x, EMPTY);

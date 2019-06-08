@@ -128,6 +128,28 @@ void move_tokens()
         move_token(i);
 }
 
+void move_token(int token)
+{
+    int i = token, new_x, new_y;
+
+    /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
+
+    do
+    {
+        new_x = rand() % (COLS);
+        new_y = rand() % (LINES);
+    } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
+
+    /* retira token da posicao antiga  */
+
+    board[coord_tokens[i].x][coord_tokens[i].y] = 0;
+    board[new_x][new_y] = token;
+
+    /* coloca token na nova posicao */
+    coord_tokens[i].x = new_x;
+    coord_tokens[i].y = new_y;
+}
+
 void board_refresh(void)
 {
     int x, y, i;
@@ -157,28 +179,6 @@ void board_refresh(void)
     attron(COLOR_PAIR(CURSOR_PAIR));
     mvaddch(cursor.y, cursor.x, EMPTY);
     attroff(COLOR_PAIR(CURSOR_PAIR));
-}
-
-void move_token(int token)
-{
-    int i = token, new_x, new_y;
-
-    /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
-
-    do
-    {
-        new_x = rand() % (COLS);
-        new_y = rand() % (LINES);
-    } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
-
-    /* retira token da posicao antiga  */
-
-    board[coord_tokens[i].x][coord_tokens[i].y] = 0;
-    board[new_x][new_y] = token;
-
-    /* coloca token na nova posicao */
-    coord_tokens[i].x = new_x;
-    coord_tokens[i].y = new_y;
 }
 
 void draw_board(void)
