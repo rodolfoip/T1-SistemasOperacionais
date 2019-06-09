@@ -11,6 +11,7 @@
 #define LINES 11
 #define COLS 11
 #define TOKENS 5
+#define SPEED_TOKENS 1
 
 int is_move_okay(int y, int x);
 void draw_board(void);
@@ -70,14 +71,12 @@ void run_game()
   init_pair(EMPTY_PAIR, COLOR_BLUE, COLOR_BLUE);
   clear();
 
-  draw_board();  /* inicializa tabuleiro */
-  move_tokens(); /* move os tokens aleatoriamente */
+  draw_board();    /* inicializa tabuleiro */
+  move_tokens();   /* move os tokens aleatoriamente */
+  board_refresh(); /* redesenha tabuleiro */
 
   do
   {
-    board_refresh(); /* redesenha tabuleiro */
-    match_move();
-
     ch = getch();
     switch (ch)
     {
@@ -114,7 +113,11 @@ void run_game()
       }
       break;
     }
-  } while ((ch != 'q') && (ch != 'Q') && (count_tokens != 0));
+
+    board_refresh(); /* redesenha tabuleiro */
+    match_move();
+
+  } while ((ch != 'q') && (ch != 'Q'));
   endwin();
 }
 
@@ -148,6 +151,7 @@ void *move_token(void *token)
     int i = *((int *)token), new_x, new_y;
 
     /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
+    pthread_mutex_lock(&mutex);
 
     do
     {
@@ -156,7 +160,6 @@ void *move_token(void *token)
     } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
 
     /* retira token da posicao antiga  */
-    pthread_mutex_lock(&mutex);
 
     board[coord_tokens[i].x][coord_tokens[i].y] = 0;
     board[new_x][new_y] = *((int *)token);
@@ -167,7 +170,7 @@ void *move_token(void *token)
 
     pthread_mutex_unlock(&mutex);
 
-    sleep(1);/* Velocidade em que os tokens se movem */
+    sleep(SPEED_TOKENS); /* Velocidade em que os tokens se movem */
   }
 }
 
