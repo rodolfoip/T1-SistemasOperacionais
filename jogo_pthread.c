@@ -11,50 +11,56 @@
 #define LINES 11
 #define COLS 11
 #define TOKENS 5
-#define SPEED_TOKENS 1
 
-int is_move_okay(int y, int x);
-void draw_board(void);
+void init_ncurses();
+void init_table();
+void init_tokens();
+void init_cursor();
+void init_countdown();
 void *move_token(void *token);
-void move_tokens();
+void *move_cursor();
 void board_refresh(void);
+void *countdown_timer();
+void move_tokens();
 void match_move();
+void menu_game();
 void run_game();
 pthread_t token[TOKENS];
+pthread_t cursor_thread;
+pthread_t countdown_thread;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int id[TOKENS] = {0, 1, 2, 3, 4};
-int count_tokens = TOKENS;
-
-char board[LINES][COLS];
+int captured_tokens = 0;
+int timer = 10;
+int speed_token = 1;
+bool end_game = false;
 
 typedef struct CoordStruct
 {
   int x;
   int y;
+  bool running;
 } coord_type;
 
 coord_type cursor, coord_tokens[TOKENS];
 
 int main(void)
 {
-  run_game();
+  menu_game();
+  endwin();
   exit(0);
 }
-
-void run_game()
+void init_ncurses()
 {
-  int ch;
   srand(time(NULL)); /* inicializa gerador de numeros aleatorios */
 
   /* inicializa curses */
-
   initscr();
-  keypad(stdscr, TRUE);
   cbreak();
+  keypad(stdscr, TRUE);
   noecho();
 
   /* inicializa colors */
-
   if (has_colors() == FALSE)
   {
     endwin();
@@ -63,21 +69,81 @@ void run_game()
   }
 
   start_color();
-
   /* inicializa pares caracter-fundo do caracter */
 
   init_pair(CURSOR_PAIR, COLOR_YELLOW, COLOR_YELLOW);
   init_pair(TOKEN_PAIR, COLOR_RED, COLOR_RED);
   init_pair(EMPTY_PAIR, COLOR_BLUE, COLOR_BLUE);
+}
+
+void menu_game()
+{
+  init_ncurses();
+
   clear();
+  mvprintw(0, 0, "Selecione um nível:");
+  mvprintw(1, 0, "(1) Fácil - 150 segundos para captura");
+  mvprintw(2, 0, "(2) Médio - 80 segundos para captura");
+  mvprintw(3, 0, "(3) Dificil - 50 segundos para captura");
+  mvprintw(4, 0, "(Q/q) Fechar");
 
-  draw_board();    /* inicializa tabuleiro */
-  move_tokens();   /* move os tokens aleatoriamente */
-  board_refresh(); /* redesenha tabuleiro */
+  switch (getch())
+  {
+  case '1':
+    speed_token = 2.0;
+    timer = 150;
+    run_game();
+    break;
 
+  case '2':
+    speed_token = 1.5;
+    timer = 80;
+    run_game();
+    break;
+  case '3':
+    speed_token = 1;
+    timer = 50;
+    run_game();
+    break;
+
+  case 'q':
+  case 'Q':
+    endwin();
+    exit(0);
+  default:
+    menu_game();
+    break;
+  }
+}
+
+void run_game()
+{
+  clear();
+  refresh();
+
+  init_table();     /* inicializa o tabuleiro */
+  init_tokens();    /* inicializa os tokens no tabuleiro */
+  init_cursor();    /* inicializa o cursor no tabuleiro */
+  move_tokens();    /* move os tokens aleatoriamente */
+  board_refresh();  /* redesenha tabuleiro */
+  init_countdown(); /* porque sou justo XD */
+
+  for (int i = 0; i < TOKENS; i++)
+  {
+    pthread_join(token[i], NULL);
+  }
+  pthread_join(cursor_thread, NULL);
+  pthread_join(countdown_thread, NULL);
+}
+
+void *move_cursor()
+{
+  int ch;
   do
   {
     ch = getch();
+    pthread_mutex_lock(&mutex);
+
     switch (ch)
     {
     case KEY_UP:
@@ -114,26 +180,14 @@ void run_game()
       break;
     }
 
-    board_refresh(); /* redesenha tabuleiro */
     match_move();
+    board_refresh(); /* redesenha tabuleiro */
+    pthread_mutex_unlock(&mutex);
 
   } while ((ch != 'q') && (ch != 'Q'));
-  endwin();
-}
 
-void match_move()
-{
-  int i;
-  for (i = 0; i < TOKENS; i++)
-  {
-    if (coord_tokens[i].x == cursor.x && coord_tokens[i].y == cursor.y)
-    {
-      pthread_mutex_lock(&mutex);
-      board[coord_tokens[i].x][coord_tokens[i].y] = 0;
-      count_tokens = count_tokens - 1;
-      pthread_mutex_unlock(&mutex);
-    }
-  }
+  pthread_mutex_unlock(&mutex);
+  pthread_exit(0);
 }
 
 void move_tokens()
@@ -145,37 +199,80 @@ void move_tokens()
 
 void *move_token(void *token)
 {
-  while (1)
+  int token_id = *((int *)token);
+  while (coord_tokens[token_id].running)
   {
-    /* code */
-    int i = *((int *)token), new_x, new_y;
-
-    /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
     pthread_mutex_lock(&mutex);
 
+    /* code */
+    int i = token_id, new_x, new_y;
+
+    /* determina novas posicoes (coordenadas) do token no tabuleiro (matriz) */
     do
     {
       new_x = rand() % (COLS);
       new_y = rand() % (LINES);
-    } while ((board[new_x][new_y] != 0) || ((new_x == cursor.x) && (new_y == cursor.y)));
-
-    /* retira token da posicao antiga  */
-
-    board[coord_tokens[i].x][coord_tokens[i].y] = 0;
-    board[new_x][new_y] = *((int *)token);
+    } while ((new_x == cursor.x) && (new_y == cursor.y));
 
     /* coloca token na nova posicao */
     coord_tokens[i].x = new_x;
     coord_tokens[i].y = new_y;
 
+    board_refresh();
     pthread_mutex_unlock(&mutex);
-
-    sleep(SPEED_TOKENS); /* Velocidade em que os tokens se movem */
+    sleep(speed_token); /* Velocidade em que os tokens se movem */
   }
+
+  pthread_exit(0);
+}
+
+void match_move()
+{
+  int i;
+  for (i = 0; i < TOKENS; i++)
+  {
+    if (coord_tokens[i].running && coord_tokens[i].x == cursor.x && coord_tokens[i].y == cursor.y)
+    {
+      coord_tokens[i].running = false;
+      captured_tokens = captured_tokens + 1;
+
+      if (captured_tokens == TOKENS)
+      {
+        pthread_cancel(countdown_thread);
+        end_game = TRUE;
+        pthread_exit(0);
+      }
+    }
+  }
+}
+
+void *countdown_timer()
+{
+  do
+  {
+    move(5, 15);
+    clrtoeol();
+
+    pthread_mutex_lock(&mutex);
+
+    mvprintw(5, 15, "Time remaining %i seconds", timer--);
+    refresh();
+
+    pthread_mutex_unlock(&mutex);
+    sleep(1);
+
+  } while (timer >= 0);
+
+  pthread_cancel(cursor_thread);
+  refresh();
+  end_game = TRUE;
+  pthread_exit(0);
 }
 
 void board_refresh(void)
 {
+  clear();
+
   int x, y, i;
 
   /* redesenha tabuleiro "limpo" */
@@ -190,27 +287,66 @@ void board_refresh(void)
 
   /* poe os tokens no tabuleiro */
 
-  for (i = 0; i < count_tokens; i++)
+  for (i = 0; i < TOKENS; i++)
   {
-    attron(COLOR_PAIR(TOKEN_PAIR));
-    mvaddch(coord_tokens[i].y, coord_tokens[i].x, EMPTY);
-    attroff(COLOR_PAIR(TOKEN_PAIR));
+    if (coord_tokens[i].running)
+    {
+      attron(COLOR_PAIR(TOKEN_PAIR));
+      mvaddch(coord_tokens[i].y, coord_tokens[i].x, EMPTY);
+      attroff(COLOR_PAIR(TOKEN_PAIR));
+    }
   }
   /* poe o cursor no tabuleiro */
 
   move(y, x);
-  refresh();
   attron(COLOR_PAIR(CURSOR_PAIR));
   mvaddch(cursor.y, cursor.x, EMPTY);
   attroff(COLOR_PAIR(CURSOR_PAIR));
+  refresh();
 }
 
-void draw_board(void)
+void init_countdown()
 {
-  int x, y;
+  pthread_create(&countdown_thread, NULL, countdown_timer, NULL);
+}
 
-  /* limpa matriz que representa o tabuleiro */
-  for (x = 0; x < COLS; x++)
-    for (y = 0; y < LINES; y++)
-      board[x][y] = 0;
+void init_table()
+{
+  clear();
+  for (int i = 0; i < LINES; i++)
+  {
+    for (int j = 0; j < COLS; j++)
+    {
+      attron(COLOR_PAIR(EMPTY_PAIR));
+      mvaddch(j, i, EMPTY);
+      attroff(COLOR_PAIR(EMPTY_PAIR));
+    }
+  }
+  refresh();
+}
+
+void init_cursor()
+{
+  clear();
+
+  cursor.x = 6;
+  cursor.y = 6;
+
+  refresh();
+
+  pthread_create(&cursor_thread, NULL, move_cursor, NULL);
+}
+
+void init_tokens()
+{
+  for (int i = 0; i < TOKENS; i++)
+  {
+    clear();
+
+    coord_tokens[i].running = true;
+    coord_tokens[i].x = 0;
+    coord_tokens[i].y = 0;
+
+    refresh();
+  }
 }
